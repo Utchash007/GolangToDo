@@ -23,17 +23,17 @@ A RESTful ToDo API built with Go. Single `Task` entity, no authentication. Full 
 ## Common Commands
 
 ```bash
-# Run the server
+# Run the server (requires .env with PORT and DATABASE_URL)
 go run ./cmd/api
 
 # Build binary
 go build -o bin/api ./cmd/api
 
-# Run all tests
+# Run all tests (DB integration tests skip if DATABASE_URL is not set)
 go test ./...
 
 # Run a single test
-go test ./internal/task/... -run TestTaskService_Create
+go test ./internal/config/... -run TestLoad_RequiredVars
 
 # Run tests with race detector
 go test -race ./...
@@ -48,22 +48,28 @@ migrate -path ./migrations -database "$DATABASE_URL" down 1
 golangci-lint run ./...
 ```
 
-## Expected Directory Layout
+## Directory Layout
 
+Built so far (F1):
 ```
-cmd/api/          # main.go — server entry point
+cmd/api/main.go              # Entry point — wires config → db → router → Run
+internal/
+  config/config.go           # Load() validates env vars, returns Config struct
+  db/db.go                   # Connect() opens sqlx+pgx pool, retries 5×2s
+  router/router.go           # New(Pinger) registers routes, GET /health
+migrations/                  # SQL migration files (*.up.sql / *.down.sql) — empty until F2
+.env.example                 # Documents all supported env vars
+```
+
+Planned (F2–F7):
+```
 internal/
   task/
-    handler.go    # Gin handler, request binding, response
-    service.go    # Business logic
-    repository.go # sqlx DB queries
-    model.go      # Task struct, DTOs
-    routes.go     # Route registration
-  db/             # DB connection pool setup
-  middleware/     # Request logging, request ID
-  config/         # Env loading via godotenv
-migrations/       # SQL migration files (*.up.sql / *.down.sql)
-.env.example      # Template for required env vars
+    handler.go               # Gin handler, request binding, response
+    service.go               # Business logic
+    repository.go            # sqlx DB queries behind Repository interface
+    model.go                 # Task struct, DTOs, priority enum
+  middleware/                # Request logging, request ID (F7)
 ```
 
 ## Architecture
@@ -103,10 +109,12 @@ Task {
 - `defer rows.Close()` immediately after every query
 - Single `ErrorResponse{code, message}` shape for all errors
 - Enum types start at 1 — zero value means unknown/unset
+- Narrow interfaces for testability — e.g. `Pinger` in `internal/router` accepts any type with `PingContext(ctx) error`, not `*sqlx.DB` directly
+- DB integration tests use `t.Skip` when `DATABASE_URL` is unset — safe to run in CI without a real DB
 
 ## Delivery Phases
 
-1. **Foundation** — Bootstrap, DB connection, migrations, observability (F1, F2, F7)
+1. **Foundation** — Bootstrap, DB connection, migrations, observability (F1 ✅, F2, F7)
 2. **Core API** — Task CRUD + validation/error handling (F3, F6)
 3. **Advanced Queries** — Filtering, pagination, bulk ops (F4, F5)
 
