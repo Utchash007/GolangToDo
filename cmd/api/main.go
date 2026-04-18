@@ -29,6 +29,7 @@ func main() {
 		slog.Error("database connection failed", "error", err)
 		os.Exit(1)
 	}
+	defer database.Close()
 
 	r := router.New(database)
 	srv := &http.Server{
@@ -54,10 +55,8 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown failed", "error", err)
-		database.Close()
 		os.Exit(1)
 	}
 
-	database.Close()
 	slog.Info("shutdown complete")
 }

@@ -47,6 +47,19 @@ func TestRequestID_InjectsContext(t *testing.T) {
 	assert.Equal(t, w.Header().Get("X-Request-ID"), capturedID)
 }
 
+func TestRequestID_UniquePerRequest(t *testing.T) {
+	r := gin.New()
+	r.Use(middleware.RequestID())
+	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	w1 := httptest.NewRecorder()
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w1, httptest.NewRequest(http.MethodGet, "/", nil))
+	r.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	assert.NotEqual(t, w1.Header().Get("X-Request-ID"), w2.Header().Get("X-Request-ID"))
+}
+
 func TestRequestIDFromContext_EmptyWhenMissing(t *testing.T) {
 	id := middleware.RequestIDFromContext(t.Context())
 	assert.Empty(t, id)

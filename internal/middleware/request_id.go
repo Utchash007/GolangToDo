@@ -27,7 +27,6 @@ func RequestID() gin.HandlerFunc {
 		}
 
 		requestID := id.String()
-		c.Set("requestID", requestID)
 		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), contextKey{}, requestID))
 		c.Header("X-Request-ID", requestID)
 		c.Next()
