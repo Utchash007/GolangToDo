@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"GolangToDo/internal/config"
 	"GolangToDo/internal/db"
@@ -10,6 +16,8 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("invalid configuration", "error", err)
@@ -21,11 +29,35 @@ func main() {
 		slog.Error("database connection failed", "error", err)
 		os.Exit(1)
 	}
-	defer database.Close()
 
 	r := router.New(database)
-	if err := r.Run(":" + cfg.Port); err != nil {
-		slog.Error("server failed", "error", err)
+	srv := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: r,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	<-ctx.Done()
+
+	slog.Info("shutting down")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("shutdown failed", "error", err)
+		database.Close()
 		os.Exit(1)
 	}
+
+	database.Close()
+	slog.Info("shutdown complete")
 }
