@@ -1,9 +1,11 @@
 # Project Plan: Go ToDo REST API
 
 > **Date:** 2026-04-18
+> **Last updated:** 2026-04-18
 > **Type:** Greenfield
 > **Estimated features:** 7
 > **Estimated phases:** 3
+> **Phase 1 status:** Complete ✅
 
 ## Project Summary
 
@@ -118,13 +120,13 @@ A RESTful ToDo API built with Go, using Gin as the HTTP framework and PostgreSQL
 
 | # | Feature | Type | Description | Dependencies |
 |---|---------|------|-------------|--------------|
-| F1 | Project Bootstrap | Infrastructure | Go module, folder structure, config loading, DB connection, migration runner | None |
-| F2 | Database Schema | Infrastructure | Tasks table migration, indexes on priority/category/completed | F1 |
+| F1 ✅ | Project Bootstrap | Infrastructure | Go module, folder structure, config loading, DB connection, migration runner | None |
+| F2 ✅ | Database Schema | Infrastructure | Tasks table migration, indexes on priority/category/completed | F1 |
+| F7 ✅ | Observability & Graceful Shutdown | Cross-cutting | Structured slog logging, request logging middleware, graceful shutdown on SIGTERM | F1 |
 | F3 | Task CRUD | Core | Create, read (single + list), update, delete endpoints | F2 |
-| F4 | Filtering & Pagination | Core | Filter list by priority/category/completed, cursor or offset pagination | F3 |
-| F5 | Bulk Operations | Core | Bulk complete and bulk delete by list of IDs | F3 |
 | F6 | Input Validation & Error Handling | Cross-cutting | Struct validation, consistent error response shape, 404/400/500 handling | F3 |
-| F7 | Observability & Graceful Shutdown | Cross-cutting | Structured slog logging, request logging middleware, graceful shutdown on SIGTERM | F1 |
+| F4 | Filtering & Pagination | Core | Filter list by priority/category/completed, offset pagination | F3 |
+| F5 | Bulk Operations | Core | Bulk complete and bulk delete by list of IDs | F3 |
 
 ### Feature Dependencies
 
@@ -149,15 +151,21 @@ F1
 
 ## Delivery Phases
 
-### Phase 1: Foundation
+### Phase 1: Foundation ✅ Complete
 **Goal:** A running Go HTTP server connected to PostgreSQL with migrations applied
-**Features:** F1, F2, F7
-**Risk:** DB connection config and migration runner wiring
+**Features:** F1 ✅, F2 ✅, F7 ✅
+**Delivered:**
+- Go module, config loading (`internal/config`), PostgreSQL connection pool with retries (`internal/db`)
+- Gin server with graceful shutdown on SIGTERM/SIGINT (`cmd/api/main.go`)
+- `GET /health` endpoint with DB ping
+- `tasks` table migration — `priority` enum, all columns, 3 BTREE indexes (`migrations/001_create_tasks.*`)
+- `github.com/google/uuid` added for application-side UUID generation (consumed by F3)
+- Structured JSON logging via `log/slog`, per-request UUID middleware (`internal/middleware`)
 
-### Phase 2: Core API
+### Phase 2: Core API — In Progress
 **Goal:** Full CRUD on Tasks with validation and consistent error handling
 **Features:** F3, F6
-**Depends on:** Phase 1 complete
+**Depends on:** Phase 1 ✅
 **Risk:** Validation edge cases on priority/category enum types
 
 ### Phase 3: Advanced Queries
@@ -183,26 +191,27 @@ F1
 
 - **Pagination strategy:** Offset-based (simple) vs keyset/cursor (scalable)?
   - **Impact if unresolved:** Offset is fine for small datasets; cursor needed if tasks grow large
-  - **Suggested default:** Start with offset pagination, note keyset as a future upgrade
+  - **Decision:** Offset pagination — simpler to implement, sufficient for v1; keyset noted as future upgrade
 
-- **Category type:** Free-text string vs predefined enum?
-  - **Impact if unresolved:** Free-text is flexible but risks inconsistency ("Work" vs "work")
-  - **Suggested default:** Free-text with trimmed lowercase normalization on write
+- **Category type:** ~~Free-text string vs predefined enum?~~ **Resolved:** Free-text with lowercase normalization on write — schema uses nullable `TEXT`, application lowercases before every insert/update.
 
 ---
 
 ## Next Steps
 
-The following features each need their own `plan-feature` session:
+Phase 1 is complete. Phase 2 is next.
 
-1. **F1: Project Bootstrap** — focus on folder structure, config loading, DB connection pool, migration runner wiring
-2. **F2: Database Schema** — Tasks table DDL, indexes, enum types for priority
-3. **F3: Task CRUD** — handler → service → repository wiring, all 5 endpoints
-4. **F6: Validation & Error Handling** — error response shape, validator integration with Gin
-5. **F4: Filtering & Pagination** — query builder pattern for dynamic filters, pagination shape
-6. **F5: Bulk Operations** — bulk complete + bulk delete, transaction handling
+**Remaining features — plan each before implementing:**
 
-Start with: `/plan-feature for: Project Bootstrap (from ARCHITECTURE.md, feature F1)`
+1. ~~**F1: Project Bootstrap**~~ ✅
+2. ~~**F2: Database Schema**~~ ✅
+3. ~~**F7: Observability & Graceful Shutdown**~~ ✅
+4. **F3: Task CRUD** — handler → service → repository wiring, all 5 endpoints ← **start here**
+5. **F6: Input Validation & Error Handling** — error response shape, validator integration with Gin
+6. **F4: Filtering & Pagination** — dynamic filter query builder, offset pagination
+7. **F5: Bulk Operations** — bulk complete + bulk delete, transaction handling
+
+Start with: `/plan-feature for: Task CRUD (from ARCHITECTURE.md, feature F3)`
 
 ---
 _This project plan is the input for individual plan-feature sessions._
