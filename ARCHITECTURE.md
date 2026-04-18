@@ -88,6 +88,30 @@ A RESTful ToDo API built with Go, using Gin as the HTTP framework and PostgreSQL
 
 ---
 
+## Data Models
+
+### Task
+
+| Column | PostgreSQL Type | Constraints |
+|--------|----------------|-------------|
+| `id` | `UUID` | PRIMARY KEY, NOT NULL — generated application-side via `google/uuid` |
+| `title` | `TEXT` | NOT NULL, CHECK (`title <> ''`) |
+| `priority` | `priority` (native ENUM) | NOT NULL — values: `low`, `medium`, `high` |
+| `category` | `TEXT` | NULL allowed — normalized to lowercase on write |
+| `completed` | `BOOLEAN` | NOT NULL, DEFAULT `false` |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL — set by application at insert |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL — set by application on every write |
+
+**Indexes:** `idx_tasks_priority`, `idx_tasks_category`, `idx_tasks_completed` (all BTREE, single-column)
+
+**Key decisions:**
+- Native PostgreSQL ENUM enforces valid priority values at the DB level; priority set is stable so ALTER ENUM cost is acceptable
+- `updated_at` is application-side, not a DB trigger — keeps migration simple and makes timestamps explicit in the service layer
+- `category` is nullable (not empty string) to distinguish "not set" from "empty"
+- `id` generated in Go so the application knows it before the INSERT (no extra SELECT round-trip)
+
+---
+
 ## Feature Map
 
 ### Feature List
