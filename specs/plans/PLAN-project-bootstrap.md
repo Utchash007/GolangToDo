@@ -260,7 +260,7 @@ Implement `internal/config/config.go` — load `.env` via `joho/godotenv`, valid
 
 ## Task T2: DB Connection Pool with Retry
 
-> **Status:** not started
+> **Status:** done
 > **Effort:** m
 > **Priority:** critical
 > **Depends on:** T1
@@ -287,7 +287,7 @@ Implement `internal/db/db.go` — open a `sqlx` + `pgx/v5` connection pool using
 ### Implementation Notes
 
 - **Layer:** `internal/db/`
-- **Libraries:** `github.com/jmoiern/sqlx`, `github.com/jackc/pgx/v5/stdlib` (register as `"pgx"` driver)
+- **Libraries:** `github.com/jmoiron/sqlx`, `github.com/jackc/pgx/v5/stdlib` (register as `"pgx"` driver)
 - **Key decisions:** always call `db.PingContext()` with a 5-second timeout after `sqlx.Open` — `Open` alone does not dial; retry loop uses `time.Sleep(2 * time.Second)` between attempts; log each attempt with attempt number using `slog`
 - **Retry:** fixed 5 attempts, 2s sleep between each — no exponential backoff
 
@@ -310,7 +310,7 @@ Implement `internal/db/db.go` — open a `sqlx` + `pgx/v5` connection pool using
 
 ## Task T3: Gin Server, `/health` Endpoint & `main.go` Wiring
 
-> **Status:** not started
+> **Status:** done
 > **Effort:** s
 > **Priority:** critical
 > **Depends on:** T1, T2
