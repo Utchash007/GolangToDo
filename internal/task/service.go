@@ -80,6 +80,9 @@ func (s *service) UpdateTask(ctx context.Context, id string, req UpdateTaskReque
 	}
 	if req.Category != nil {
 		lower := strings.ToLower(strings.TrimSpace(*req.Category))
+		if lower == "" {
+			return nil, &ValidationError{"category cannot be empty"}
+		}
 		task.Category = &lower
 	}
 	if req.Completed != nil {

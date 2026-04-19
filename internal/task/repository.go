@@ -62,7 +62,7 @@ func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Task, error) {
 func (r *repository) GetAll(ctx context.Context) ([]*Task, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	var tasks []*Task
+	tasks := make([]*Task, 0)
 	const query = `
 		SELECT id, title, priority, category, completed, created_at, updated_at
 		FROM tasks ORDER BY created_at DESC`
