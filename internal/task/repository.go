@@ -2,11 +2,16 @@ package task
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
+
+const dbTimeout = 5 * time.Second
 
 var ErrNotFound = errors.New("task not found")
 
@@ -27,49 +32,64 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (r *repository) Create(ctx context.Context, task *Task) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 	query := `
 		INSERT INTO tasks (id, title, priority, category, completed, created_at, updated_at)
 		VALUES (:id, :title, :priority, :category, :completed, :created_at, :updated_at)`
-	_, err := r.db.NamedExecContext(ctx, query, task)
-	return err
+	if _, err := r.db.NamedExecContext(ctx, query, task); err != nil {
+		return fmt.Errorf("creating task: %w", err)
+	}
+	return nil
 }
 
 func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Task, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 	var task Task
-	query := `SELECT * FROM tasks WHERE id = $1`
-	err := r.db.GetContext(ctx, &task, query, id)
-	if err != nil {
-		return nil, ErrNotFound
+	const query = `
+		SELECT id, title, priority, category, completed, created_at, updated_at
+		FROM tasks WHERE id = $1`
+	if err := r.db.GetContext(ctx, &task, query, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("getting task %s: %w", id, err)
 	}
 	return &task, nil
 }
 
 func (r *repository) GetAll(ctx context.Context) ([]*Task, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 	var tasks []*Task
-	query := `SELECT * FROM tasks ORDER BY created_at DESC`
-	err := r.db.SelectContext(ctx, &tasks, query)
-	if err != nil {
-		return nil, err
+	const query = `
+		SELECT id, title, priority, category, completed, created_at, updated_at
+		FROM tasks ORDER BY created_at DESC`
+	if err := r.db.SelectContext(ctx, &tasks, query); err != nil {
+		return nil, fmt.Errorf("listing tasks: %w", err)
 	}
 	return tasks, nil
 }
 
 func (r *repository) Update(ctx context.Context, task *Task) error {
-	query := `
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	const query = `
 		UPDATE tasks SET
-			title = :title,
-			priority = :priority,
-			category = :category,
-			completed = :completed,
+			title      = :title,
+			priority   = :priority,
+			category   = :category,
+			completed  = :completed,
 			updated_at = :updated_at
 		WHERE id = :id`
 	result, err := r.db.NamedExecContext(ctx, query, task)
 	if err != nil {
-		return err
+		return fmt.Errorf("updating task %s: %w", task.ID, err)
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("checking rows affected: %w", err)
 	}
 	if rows == 0 {
 		return ErrNotFound
@@ -78,14 +98,15 @@ func (r *repository) Update(ctx context.Context, task *Task) error {
 }
 
 func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
-	query := `DELETE FROM tasks WHERE id = $1`
-	result, err := r.db.ExecContext(ctx, query, id)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	result, err := r.db.ExecContext(ctx, `DELETE FROM tasks WHERE id = $1`, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("deleting task %s: %w", id, err)
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("checking rows affected: %w", err)
 	}
 	if rows == 0 {
 		return ErrNotFound

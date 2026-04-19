@@ -19,7 +19,7 @@ func New(db *sqlx.DB) *gin.Engine {
 	r := gin.New()
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger())
-	r.GET("/health", healthHandler(db))
+	r.GET("/health", HealthHandler(db))
 
 	taskHandler := task.NewHandler(task.NewService(db))
 	taskHandler.RegisterRoutes(r)
@@ -27,7 +27,9 @@ func New(db *sqlx.DB) *gin.Engine {
 	return r
 }
 
-func healthHandler(db Pinger) gin.HandlerFunc {
+// HealthHandler returns a Gin handler that pings db and reports service health.
+// Exported so tests can use it directly with a mock Pinger.
+func HealthHandler(db Pinger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := db.PingContext(c.Request.Context()); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "degraded"})

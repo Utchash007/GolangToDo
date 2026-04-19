@@ -19,14 +19,14 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.POST("/tasks", h.CreateTask)
 	r.GET("/tasks", h.ListTasks)
 	r.GET("/tasks/:id", h.GetTask)
-	r.POST("/tasks/:id", h.UpdateTask)
+	r.PATCH("/tasks/:id", h.UpdateTask)
 	r.DELETE("/tasks/:id", h.DeleteTask)
 }
 
 func (h *Handler) CreateTask(c *gin.Context) {
 	var req CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Code: "invalid_request", Message: "title is required"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Code: "invalid_request", Message: err.Error()})
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 
 	var req UpdateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Code: "invalid_request", Message: "invalid request"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Code: "invalid_request", Message: err.Error()})
 		return
 	}
 
@@ -82,8 +82,7 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 func (h *Handler) DeleteTask(c *gin.Context) {
 	id := c.Param("id")
 
-	err := h.svc.DeleteTask(c.Request.Context(), id)
-	if err != nil {
+	if err := h.svc.DeleteTask(c.Request.Context(), id); err != nil {
 		handleError(c, err)
 		return
 	}
@@ -92,10 +91,13 @@ func (h *Handler) DeleteTask(c *gin.Context) {
 }
 
 func handleError(c *gin.Context, err error) {
-	if errors.Is(err, ErrNotFound) {
+	var ve *ValidationError
+	switch {
+	case errors.Is(err, ErrNotFound):
 		c.JSON(http.StatusNotFound, ErrorResponse{Code: "not_found", Message: "task not found"})
-		return
+	case errors.As(err, &ve):
+		c.JSON(http.StatusBadRequest, ErrorResponse{Code: "invalid_request", Message: ve.Error()})
+	default:
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Code: "internal_error", Message: "internal server error"})
 	}
-
-	c.JSON(http.StatusBadRequest, ErrorResponse{Code: "invalid_request", Message: err.Error()})
 }

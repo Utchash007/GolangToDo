@@ -2,7 +2,7 @@ package task
 
 import (
 	"context"
-	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,22 +26,13 @@ func NewService(db *sqlx.DB) Service {
 }
 
 func (s *service) CreateTask(ctx context.Context, req CreateTaskRequest) (*Task, error) {
-	if req.Title == "" {
-		return nil, errors.New("title is required")
-	}
-	if req.Priority == "" {
-		return nil, errors.New("priority is required")
-	}
-	if req.Category == "" {
-		return nil, errors.New("category is required")
-	}
-
 	priority := ParsePriority(req.Priority)
 	if !priority.IsValid() {
-		return nil, errors.New("priority must be low, medium, or high")
+		return nil, &ValidationError{"priority must be low, medium, or high"}
 	}
 
-	task := NewTask(req.Title, priority, req.Category)
+	category := strings.ToLower(strings.TrimSpace(req.Category))
+	task := NewTask(req.Title, priority, category)
 	if err := s.repo.Create(ctx, task); err != nil {
 		return nil, err
 	}
@@ -72,23 +63,21 @@ func (s *service) UpdateTask(ctx context.Context, id string, req UpdateTaskReque
 	}
 
 	if req.Title != nil {
-		if *req.Title == "" {
-			return nil, errors.New("title cannot be empty")
+		if strings.TrimSpace(*req.Title) == "" {
+			return nil, &ValidationError{"title cannot be empty"}
 		}
 		task.Title = *req.Title
 	}
 	if req.Priority != nil {
 		priority := ParsePriority(*req.Priority)
 		if !priority.IsValid() {
-			return nil, errors.New("priority must be low, medium, or high")
+			return nil, &ValidationError{"priority must be low, medium, or high"}
 		}
 		task.Priority = priority
 	}
 	if req.Category != nil {
-		if *req.Category == "" {
-			return nil, errors.New("category cannot be empty")
-		}
-		task.Category = *req.Category
+		lower := strings.ToLower(strings.TrimSpace(*req.Category))
+		task.Category = &lower
 	}
 	if req.Completed != nil {
 		task.Completed = *req.Completed
