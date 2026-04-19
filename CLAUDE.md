@@ -39,10 +39,11 @@ go test ./internal/config/... -run TestLoad_RequiredVars
 go test -race ./...
 
 # Apply database migrations (up)
-migrate -path ./migrations -database "$DATABASE_URL" up
+# NOTE: golang-migrate CLI does not work with Nile (hosted PostgreSQL) — apply SQL directly:
+psql "$DATABASE_URL" -f migrations/001_create_tasks.up.sql
 
 # Roll back last migration
-migrate -path ./migrations -database "$DATABASE_URL" down 1
+psql "$DATABASE_URL" -f migrations/001_create_tasks.down.sql
 
 # Lint
 golangci-lint run ./...
