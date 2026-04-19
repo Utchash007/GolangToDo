@@ -32,6 +32,9 @@ func (s *service) CreateTask(ctx context.Context, req CreateTaskRequest) (*Task,
 	}
 
 	category := strings.ToLower(strings.TrimSpace(req.Category))
+	if category == "" {
+		return nil, &ValidationError{"category is required"}
+	}
 	task := NewTask(req.Title, priority, category)
 	if err := s.repo.Create(ctx, task); err != nil {
 		return nil, err

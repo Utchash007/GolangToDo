@@ -35,10 +35,10 @@ func TestService_CreateTask(t *testing.T) {
 		req    CreateTaskRequest
 		errMsg string
 	}{
-		{"valid with category", CreateTaskRequest{Title: "Test", Priority: "medium", Category: "work"}, ""},
-		{"valid without category", CreateTaskRequest{Title: "Test", Priority: "medium"}, ""},
-		{"invalid priority", CreateTaskRequest{Title: "Test", Priority: "critical"}, "priority must be low, medium, or high"},
-		{"missing priority binding", CreateTaskRequest{Title: "Test"}, "priority must be low, medium, or high"},
+		{"valid", CreateTaskRequest{Title: "Test", Priority: "medium", Category: "work"}, ""},
+		{"invalid priority", CreateTaskRequest{Title: "Test", Priority: "critical", Category: "work"}, "priority must be low, medium, or high"},
+		{"missing category", CreateTaskRequest{Title: "Test", Priority: "medium"}, "category is required"},
+		{"whitespace category", CreateTaskRequest{Title: "Test", Priority: "medium", Category: "   "}, "category is required"},
 	}
 
 	for _, tt := range tests {
@@ -70,17 +70,6 @@ func TestService_CreateTask_CategoryNormalized(t *testing.T) {
 	assert.Equal(t, "work", *task.Category)
 }
 
-func TestService_CreateTask_NoCategory(t *testing.T) {
-	svc := &service{repo: &mockRepo{}}
-
-	task, err := svc.CreateTask(context.Background(), CreateTaskRequest{
-		Title:    "Test",
-		Priority: "low",
-	})
-
-	require.NoError(t, err)
-	assert.Nil(t, task.Category)
-}
 
 func TestService_GetTask(t *testing.T) {
 	svc := &service{repo: &mockRepo{task: NewTask("Test", PriorityMedium, "work")}}

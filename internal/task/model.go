@@ -122,7 +122,7 @@ func NewTask(title string, priority Priority, category string) *Task {
 type CreateTaskRequest struct {
 	Title    string `json:"title"    binding:"required"`
 	Priority string `json:"priority" binding:"required"`
-	Category string `json:"category"`
+	Category string `json:"category" binding:"required"`
 }
 
 type UpdateTaskRequest struct {
