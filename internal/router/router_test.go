@@ -9,19 +9,21 @@ import (
 
 	"GolangToDo/internal/router"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
 
-type mockPinger struct {
-	err error
+func init() {
+	gin.SetMode(gin.TestMode)
 }
 
-func (m *mockPinger) PingContext(_ context.Context) error {
-	return m.err
-}
+type mockPinger struct{ err error }
+
+func (m *mockPinger) PingContext(_ context.Context) error { return m.err }
 
 func TestHealth_Healthy(t *testing.T) {
-	r := router.New(&mockPinger{err: nil})
+	r := gin.New()
+	r.GET("/health", router.HealthHandler(&mockPinger{}))
 	w := httptest.NewRecorder()
 
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
@@ -31,7 +33,8 @@ func TestHealth_Healthy(t *testing.T) {
 }
 
 func TestHealth_Degraded(t *testing.T) {
-	r := router.New(&mockPinger{err: errors.New("db down")})
+	r := gin.New()
+	r.GET("/health", router.HealthHandler(&mockPinger{err: errors.New("db down")}))
 	w := httptest.NewRecorder()
 
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
@@ -41,7 +44,8 @@ func TestHealth_Degraded(t *testing.T) {
 }
 
 func TestUnknownRoute(t *testing.T) {
-	r := router.New(&mockPinger{err: nil})
+	r := gin.New()
+	r.GET("/health", router.HealthHandler(&mockPinger{}))
 	w := httptest.NewRecorder()
 
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/unknown", nil))
