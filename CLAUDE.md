@@ -50,26 +50,25 @@ golangci-lint run ./...
 
 ## Directory Layout
 
-Built so far (F1):
 ```
-cmd/api/main.go              # Entry point — wires config → db → router → Run
+cmd/api/main.go                  # Entry point — wires config → db → router → server
 internal/
-  config/config.go           # Load() validates env vars, returns Config struct
-  db/db.go                   # Connect() opens sqlx+pgx pool, retries 5×2s
-  router/router.go           # New(Pinger) registers routes, GET /health
-migrations/                  # SQL migration files (*.up.sql / *.down.sql) — empty until F2
-.env.example                 # Documents all supported env vars
-```
-
-Planned (F2–F7):
-```
-internal/
+  config/config.go               # Load() validates env vars, returns Config struct
+  db/db.go                       # Connect() opens sqlx+pgx pool, retries 5×2s
+  router/router.go               # New(*sqlx.DB) registers all routes; HealthHandler(Pinger) exported
+  middleware/
+    request_id.go                # UUID v4 per request → context + X-Request-ID header
+    logger.go                    # slog request logging (method, path, status, latency_ms)
   task/
-    handler.go               # Gin handler, request binding, response
-    service.go               # Business logic
-    repository.go            # sqlx DB queries behind Repository interface
-    model.go                 # Task struct, DTOs, priority enum
-  middleware/                # Request logging, request ID (F7)
+    model.go                     # Task struct, Priority enum (Value/Scan/JSON), DTOs, ValidationError
+    repository.go                # Repository interface + sqlx impl; 5s timeout on every DB call
+    service.go                   # Business logic, category normalization, ValidationError returns
+    handler.go                   # Gin handlers; handleError maps ValidationError→400, rest→500
+migrations/
+  001_create_tasks.up.sql        # priority ENUM, tasks table, 3 BTREE indexes
+  001_create_tasks.down.sql      # reverse migration
+specs/plans/                     # Feature plan documents (PLAN-*.md)
+.env.example                     # Documents all supported env vars
 ```
 
 ## Architecture
@@ -114,8 +113,8 @@ Task {
 
 ## Delivery Phases
 
-1. **Foundation** — Bootstrap, DB connection, migrations, observability (F1 ✅, F2, F7)
-2. **Core API** — Task CRUD + validation/error handling (F3, F6)
+1. **Foundation** — Bootstrap, DB connection, migrations, observability (F1 ✅, F2 ✅, F7 ✅)
+2. **Core API** — Task CRUD + validation/error handling (F3 ✅, F6)
 3. **Advanced Queries** — Filtering, pagination, bulk ops (F4, F5)
 
 ## Skills Available

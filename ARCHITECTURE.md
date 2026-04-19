@@ -1,11 +1,12 @@
 # Project Plan: Go ToDo REST API
 
 > **Date:** 2026-04-18
-> **Last updated:** 2026-04-18
+> **Last updated:** 2026-04-19
 > **Type:** Greenfield
 > **Estimated features:** 7
 > **Estimated phases:** 3
 > **Phase 1 status:** Complete ✅
+> **Phase 2 status:** In Progress 🔄
 
 ## Project Summary
 
@@ -123,7 +124,7 @@ A RESTful ToDo API built with Go, using Gin as the HTTP framework and PostgreSQL
 | F1 ✅ | Project Bootstrap | Infrastructure | Go module, folder structure, config loading, DB connection, migration runner | None |
 | F2 ✅ | Database Schema | Infrastructure | Tasks table migration, indexes on priority/category/completed | F1 |
 | F7 ✅ | Observability & Graceful Shutdown | Cross-cutting | Structured slog logging, request logging middleware, graceful shutdown on SIGTERM | F1 |
-| F3 | Task CRUD | Core | Create, read (single + list), update, delete endpoints | F2 |
+| F3 ✅ | Task CRUD | Core | Create, read (single + list), update, delete endpoints | F2 |
 | F6 | Input Validation & Error Handling | Cross-cutting | Struct validation, consistent error response shape, 404/400/500 handling | F3 |
 | F4 | Filtering & Pagination | Core | Filter list by priority/category/completed, offset pagination | F3 |
 | F5 | Bulk Operations | Core | Bulk complete and bulk delete by list of IDs | F3 |
@@ -162,10 +163,17 @@ F1
 - `github.com/google/uuid` added for application-side UUID generation (consumed by F3)
 - Structured JSON logging via `log/slog`, per-request UUID middleware (`internal/middleware`)
 
-### Phase 2: Core API — In Progress
+### Phase 2: Core API — In Progress 🔄
 **Goal:** Full CRUD on Tasks with validation and consistent error handling
-**Features:** F3, F6
+**Features:** F3 ✅, F6
 **Depends on:** Phase 1 ✅
+**Delivered so far:**
+- `internal/task/` — Handler → Service → Repository wiring, all 5 endpoints
+- `Priority` type with `driver.Valuer` + `sql.Scanner` for PostgreSQL ENUM, `MarshalJSON`/`UnmarshalJSON` for string JSON
+- `ValidationError` type — service returns typed errors, handler maps to 400/404/500
+- `context.WithTimeout(5s)` on every repository DB call
+- `GET /tasks` returns `[]` (not `null`) on empty result
+- `router.HealthHandler` exported for unit-testable mock injection
 **Risk:** Validation edge cases on priority/category enum types
 
 ### Phase 3: Advanced Queries
@@ -206,8 +214,8 @@ Phase 1 is complete. Phase 2 is next.
 1. ~~**F1: Project Bootstrap**~~ ✅
 2. ~~**F2: Database Schema**~~ ✅
 3. ~~**F7: Observability & Graceful Shutdown**~~ ✅
-4. **F3: Task CRUD** — handler → service → repository wiring, all 5 endpoints ← **start here**
-5. **F6: Input Validation & Error Handling** — error response shape, validator integration with Gin
+4. ~~**F3: Task CRUD**~~ ✅
+5. **F6: Input Validation & Error Handling** — error response shape, validator integration with Gin ← **start here**
 6. **F4: Filtering & Pagination** — dynamic filter query builder, offset pagination
 7. **F5: Bulk Operations** — bulk complete + bulk delete, transaction handling
 
