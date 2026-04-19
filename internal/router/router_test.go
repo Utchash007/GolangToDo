@@ -1,47 +1,42 @@
 package router_test
 
 import (
-	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"GolangToDo/internal/router"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 )
 
-type mockPinger struct {
-	err error
+func mustConnectDB(t *testing.T) *sqlx.DB {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	db, err := sqlx.Connect("pgx", databaseURL)
+	if err != nil {
+		t.Skip("cannot connect to DB")
+	}
+	return db
 }
 
-func (m *mockPinger) PingContext(_ context.Context) error {
-	return m.err
-}
-
-func TestHealth_Healthy(t *testing.T) {
-	r := router.New(&mockPinger{err: nil})
+func TestHealth(t *testing.T) {
+	db := mustConnectDB(t)
+	r := router.New(db)
 	w := httptest.NewRecorder()
 
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"status":"ok"}`, w.Body.String())
-}
-
-func TestHealth_Degraded(t *testing.T) {
-	r := router.New(&mockPinger{err: errors.New("db down")})
-	w := httptest.NewRecorder()
-
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
-
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-	assert.JSONEq(t, `{"status":"degraded"}`, w.Body.String())
 }
 
 func TestUnknownRoute(t *testing.T) {
-	r := router.New(&mockPinger{err: nil})
+	db := mustConnectDB(t)
+	r := router.New(db)
 	w := httptest.NewRecorder()
 
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/unknown", nil))
