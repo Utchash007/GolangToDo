@@ -132,7 +132,14 @@ type UpdateTaskRequest struct {
 	Completed *bool   `json:"completed,omitempty"`
 }
 
-type ErrorResponse struct {
-	Code    string `json:"code"`
+// FieldError describes a single validation failure.
+type FieldError struct {
+	Field   string `json:"field,omitempty"`
 	Message string `json:"message"`
+}
+
+// ErrorResponse is the single error shape returned by all endpoints.
+type ErrorResponse struct {
+	Code   string       `json:"code"`
+	Errors []FieldError `json:"errors"`
 }
