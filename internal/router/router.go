@@ -17,6 +17,7 @@ type Pinger interface {
 
 func New(db *sqlx.DB) *gin.Engine {
 	r := gin.New()
+	r.Use(middleware.Recovery())
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger())
 	r.GET("/health", HealthHandler(db))
