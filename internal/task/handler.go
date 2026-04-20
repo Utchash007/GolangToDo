@@ -23,6 +23,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/tasks/:id", h.GetTask)
 	r.PATCH("/tasks/:id", h.UpdateTask)
 	r.DELETE("/tasks/:id", h.DeleteTask)
+	r.POST("/tasks/bulk-complete", h.BulkComplete)
+	r.DELETE("/tasks/bulk", h.BulkDelete)
 }
 
 func (h *Handler) CreateTask(c *gin.Context) {
@@ -104,6 +106,40 @@ func (h *Handler) DeleteTask(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) BulkComplete(c *gin.Context) {
+	var req BulkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Code:   "invalid_request",
+			Errors: bindingErrors(err),
+		})
+		return
+	}
+	tasks, err := h.svc.BulkComplete(c.Request.Context(), req.IDs)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, tasks)
+}
+
+func (h *Handler) BulkDelete(c *gin.Context) {
+	var req BulkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Code:   "invalid_request",
+			Errors: bindingErrors(err),
+		})
+		return
+	}
+	deleted, err := h.svc.BulkDelete(c.Request.Context(), req.IDs)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, BulkDeleteResponse{Deleted: deleted})
 }
 
 // handleError maps domain errors to the unified HTTP error shape.

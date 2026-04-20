@@ -143,3 +143,13 @@ type ErrorResponse struct {
 	Code   string       `json:"code"`
 	Errors []FieldError `json:"errors"`
 }
+
+// BulkRequest carries a list of task IDs for bulk operations.
+type BulkRequest struct {
+	IDs []string `json:"ids" binding:"required,min=1"`
+}
+
+// BulkDeleteResponse reports how many tasks were deleted.
+type BulkDeleteResponse struct {
+	Deleted int64 `json:"deleted"`
+}
