@@ -12,7 +12,7 @@ import (
 type Service interface {
 	CreateTask(ctx context.Context, req CreateTaskRequest) (*Task, error)
 	GetTask(ctx context.Context, id string) (*Task, error)
-	GetAllTasks(ctx context.Context) ([]*Task, error)
+	ListTasks(ctx context.Context, p ListParams) (*PagedResult, error)
 	UpdateTask(ctx context.Context, id string, req UpdateTaskRequest) (*Task, error)
 	DeleteTask(ctx context.Context, id string) error
 }
@@ -50,8 +50,17 @@ func (s *service) GetTask(ctx context.Context, id string) (*Task, error) {
 	return s.repo.GetByID(ctx, taskID)
 }
 
-func (s *service) GetAllTasks(ctx context.Context) ([]*Task, error) {
-	return s.repo.GetAll(ctx)
+func (s *service) ListTasks(ctx context.Context, p ListParams) (*PagedResult, error) {
+	tasks, total, err := s.repo.List(ctx, p.Filter, p.Offset, p.Limit)
+	if err != nil {
+		return nil, err
+	}
+	return &PagedResult{
+		Tasks:  tasks,
+		Total:  total,
+		Limit:  p.Limit,
+		Offset: p.Offset,
+	}, nil
 }
 
 func (s *service) UpdateTask(ctx context.Context, id string, req UpdateTaskRequest) (*Task, error) {

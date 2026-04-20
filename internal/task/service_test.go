@@ -11,20 +11,28 @@ import (
 
 type mockRepo struct {
 	Repository
-	task  *Task
-	tasks []*Task
+	task    *Task
+	tasks   []*Task
+	total   int
+	listErr error
 }
 
-func (m *mockRepo) Create(_ context.Context, _ *Task) error         { return nil }
-func (m *mockRepo) GetAll(_ context.Context) ([]*Task, error)       { return m.tasks, nil }
-func (m *mockRepo) Update(_ context.Context, _ *Task) error         { return nil }
-func (m *mockRepo) Delete(_ context.Context, _ uuid.UUID) error     { return nil }
+func (m *mockRepo) Create(_ context.Context, _ *Task) error     { return nil }
+func (m *mockRepo) Update(_ context.Context, _ *Task) error     { return nil }
+func (m *mockRepo) Delete(_ context.Context, _ uuid.UUID) error { return nil }
 
 func (m *mockRepo) GetByID(_ context.Context, _ uuid.UUID) (*Task, error) {
 	if m.task == nil {
 		return nil, ErrNotFound
 	}
 	return m.task, nil
+}
+
+func (m *mockRepo) List(_ context.Context, _ TaskFilter, _, _ int) ([]*Task, int, error) {
+	if m.listErr != nil {
+		return nil, 0, m.listErr
+	}
+	return m.tasks, m.total, nil
 }
 
 func TestService_CreateTask(t *testing.T) {
@@ -143,4 +151,62 @@ func TestService_DeleteTask_InvalidUUID(t *testing.T) {
 	err := svc.DeleteTask(context.Background(), "invalid-uuid")
 
 	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestService_ListTasks(t *testing.T) {
+	task1 := NewTask("Task 1", PriorityHigh, "work")
+	task2 := NewTask("Task 2", PriorityLow, "personal")
+
+	tests := []struct {
+		name       string
+		repo       *mockRepo
+		params     ListParams
+		wantLen    int
+		wantTotal  int
+		wantErr    bool
+	}{
+		{
+			name:      "no filters returns all",
+			repo:      &mockRepo{tasks: []*Task{task1, task2}, total: 2},
+			params:    ListParams{Limit: 20, Offset: 0},
+			wantLen:   2,
+			wantTotal: 2,
+		},
+		{
+			name:      "empty result",
+			repo:      &mockRepo{tasks: []*Task{}, total: 0},
+			params:    ListParams{Limit: 20, Offset: 0},
+			wantLen:   0,
+			wantTotal: 0,
+		},
+		{
+			name:      "pagination: limit 1 offset 1",
+			repo:      &mockRepo{tasks: []*Task{task2}, total: 2},
+			params:    ListParams{Limit: 1, Offset: 1},
+			wantLen:   1,
+			wantTotal: 2,
+		},
+		{
+			name:    "repo error propagates",
+			repo:    &mockRepo{listErr: ErrNotFound},
+			params:  ListParams{Limit: 20, Offset: 0},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &service{repo: tt.repo}
+			result, err := svc.ListTasks(context.Background(), tt.params)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Len(t, result.Tasks, tt.wantLen)
+			assert.Equal(t, tt.wantTotal, result.Total)
+			assert.Equal(t, tt.params.Limit, result.Limit)
+			assert.Equal(t, tt.params.Offset, result.Offset)
+		})
+	}
 }
