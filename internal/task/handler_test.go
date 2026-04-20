@@ -28,7 +28,7 @@ type mockService struct {
 	updateTask   func(ctx context.Context, id string, req task.UpdateTaskRequest) (*task.Task, error)
 	deleteTask   func(ctx context.Context, id string) error
 	bulkComplete func(ctx context.Context, ids []string) ([]*task.Task, error)
-	bulkDelete   func(ctx context.Context, ids []string) (int64, error)
+	bulkDelete   func(ctx context.Context, ids []string) error
 }
 
 func (m *mockService) CreateTask(ctx context.Context, req task.CreateTaskRequest) (*task.Task, error) {
@@ -67,11 +67,11 @@ func (m *mockService) BulkComplete(ctx context.Context, ids []string) ([]*task.T
 	}
 	return []*task.Task{}, nil
 }
-func (m *mockService) BulkDelete(ctx context.Context, ids []string) (int64, error) {
+func (m *mockService) BulkDelete(ctx context.Context, ids []string) error {
 	if m.bulkDelete != nil {
 		return m.bulkDelete(ctx, ids)
 	}
-	return 0, nil
+	return nil
 }
 
 func newRouter(svc task.Service) *gin.Engine {
@@ -336,26 +336,34 @@ func TestBulkComplete_InvalidUUID(t *testing.T) {
 
 func TestBulkDelete_Success(t *testing.T) {
 	svc := &mockService{
-		bulkDelete: func(_ context.Context, ids []string) (int64, error) {
-			return int64(len(ids)), nil
-		},
+		bulkDelete: func(_ context.Context, _ []string) error { return nil },
 	}
 	r := newRouter(svc)
 	w := httptest.NewRecorder()
 	body := `{"ids":["550e8400-e29b-41d4-a716-446655440000"]}`
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/tasks/bulk", strings.NewReader(body)))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/tasks/bulk-delete", strings.NewReader(body)))
 
-	require.Equal(t, http.StatusOK, w.Code)
-	var resp task.BulkDeleteResponse
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, int64(1), resp.Deleted)
+	require.Equal(t, http.StatusNoContent, w.Code)
+	assert.Empty(t, w.Body.String())
 }
 
 func TestBulkDelete_EmptyIDs(t *testing.T) {
 	r := newRouter(&mockService{})
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/tasks/bulk",
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/tasks/bulk-delete",
 		strings.NewReader(`{"ids":[]}`)))
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestBulkDelete_NotFound(t *testing.T) {
+	svc := &mockService{
+		bulkDelete: func(_ context.Context, _ []string) error { return task.ErrNotFound },
+	}
+	r := newRouter(svc)
+	w := httptest.NewRecorder()
+	body := `{"ids":["550e8400-e29b-41d4-a716-446655440000"]}`
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/tasks/bulk-delete", strings.NewReader(body)))
+
+	require.Equal(t, http.StatusNotFound, w.Code)
 }

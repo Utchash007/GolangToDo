@@ -28,8 +28,8 @@ func (m *mockRepo) BulkComplete(_ context.Context, ids []uuid.UUID) ([]*Task, er
 	}
 	return tasks, nil
 }
-func (m *mockRepo) BulkDelete(_ context.Context, ids []uuid.UUID) (int64, error) {
-	return int64(len(ids)), nil
+func (m *mockRepo) BulkDelete(_ context.Context, _ []uuid.UUID) error {
+	return nil
 }
 
 func (m *mockRepo) GetByID(_ context.Context, _ uuid.UUID) (*Task, error) {
@@ -190,17 +190,28 @@ func TestService_BulkDelete(t *testing.T) {
 		"550e8400-e29b-41d4-a716-446655440000",
 		"550e8400-e29b-41d4-a716-446655440001",
 	}
-	n, err := svc.BulkDelete(context.Background(), ids)
+	err := svc.BulkDelete(context.Background(), ids)
 
 	require.NoError(t, err)
-	assert.Equal(t, int64(2), n)
 }
 
 func TestService_BulkDelete_InvalidUUID(t *testing.T) {
 	svc := &service{repo: &mockRepo{}}
 
-	_, err := svc.BulkDelete(context.Background(), []string{"bad-id"})
+	err := svc.BulkDelete(context.Background(), []string{"bad-id"})
 
 	var ve *ValidationError
 	require.ErrorAs(t, err, &ve)
+}
+
+func TestService_BulkDelete_Deduplicates(t *testing.T) {
+	svc := &service{repo: &mockRepo{}}
+
+	// same ID twice — should be deduplicated to one call
+	ids := []string{
+		"550e8400-e29b-41d4-a716-446655440000",
+		"550e8400-e29b-41d4-a716-446655440000",
+	}
+	err := svc.BulkDelete(context.Background(), ids)
+	require.NoError(t, err)
 }

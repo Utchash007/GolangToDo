@@ -23,7 +23,7 @@ type Repository interface {
 	Update(ctx context.Context, task *Task) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	BulkComplete(ctx context.Context, ids []uuid.UUID) ([]*Task, error)
-	BulkDelete(ctx context.Context, ids []uuid.UUID) (int64, error)
+	BulkDelete(ctx context.Context, ids []uuid.UUID) error
 }
 
 type repository struct {
@@ -121,8 +121,14 @@ func (r *repository) BulkComplete(ctx context.Context, ids []uuid.UUID) ([]*Task
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	now := time.Now().UTC()
-	args := make([]interface{}, 0, len(ids)+1)
+	args := make([]any, 0, len(ids)+1)
 	args = append(args, now)
 	placeholders := make([]string, len(ids))
 	for i, id := range ids {
@@ -135,13 +141,13 @@ func (r *repository) BulkComplete(ctx context.Context, ids []uuid.UUID) ([]*Task
 		RETURNING id, title, priority, category, completed, created_at, updated_at`,
 		strings.Join(placeholders, ","))
 
-	rows, err := r.db.QueryxContext(ctx, query, args...)
+	rows, err := tx.QueryxContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("bulk completing tasks: %w", err)
 	}
 	defer rows.Close()
 
-	tasks := make([]*Task, 0)
+	tasks := make([]*Task, 0, len(ids))
 	for rows.Next() {
 		var t Task
 		if err := rows.StructScan(&t); err != nil {
@@ -149,14 +155,30 @@ func (r *repository) BulkComplete(ctx context.Context, ids []uuid.UUID) ([]*Task
 		}
 		tasks = append(tasks, &t)
 	}
-	return tasks, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating rows: %w", err)
+	}
+	if len(tasks) != len(ids) {
+		return nil, ErrNotFound
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing transaction: %w", err)
+	}
+	return tasks, nil
 }
 
-func (r *repository) BulkDelete(ctx context.Context, ids []uuid.UUID) (int64, error) {
+func (r *repository) BulkDelete(ctx context.Context, ids []uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	args := make([]interface{}, len(ids))
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	args := make([]any, len(ids))
 	placeholders := make([]string, len(ids))
 	for i, id := range ids {
 		args[i] = id
@@ -164,13 +186,20 @@ func (r *repository) BulkDelete(ctx context.Context, ids []uuid.UUID) (int64, er
 	}
 	query := fmt.Sprintf(`DELETE FROM tasks WHERE id IN (%s)`, strings.Join(placeholders, ","))
 
-	result, err := r.db.ExecContext(ctx, query, args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
-		return 0, fmt.Errorf("bulk deleting tasks: %w", err)
+		return fmt.Errorf("bulk deleting tasks: %w", err)
 	}
 	n, err := result.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("checking rows affected: %w", err)
+		return fmt.Errorf("checking rows affected: %w", err)
 	}
-	return n, nil
+	if n != int64(len(ids)) {
+		return ErrNotFound
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
+	return nil
 }

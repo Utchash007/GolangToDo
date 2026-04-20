@@ -24,7 +24,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.PATCH("/tasks/:id", h.UpdateTask)
 	r.DELETE("/tasks/:id", h.DeleteTask)
 	r.POST("/tasks/bulk-complete", h.BulkComplete)
-	r.DELETE("/tasks/bulk", h.BulkDelete)
+	r.POST("/tasks/bulk-delete", h.BulkDelete)
 }
 
 func (h *Handler) CreateTask(c *gin.Context) {
@@ -134,12 +134,11 @@ func (h *Handler) BulkDelete(c *gin.Context) {
 		})
 		return
 	}
-	deleted, err := h.svc.BulkDelete(c.Request.Context(), req.IDs)
-	if err != nil {
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
 		handleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, BulkDeleteResponse{Deleted: deleted})
+	c.Status(http.StatusNoContent)
 }
 
 // handleError maps domain errors to the unified HTTP error shape.
