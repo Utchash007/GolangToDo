@@ -24,7 +24,7 @@ func init() {
 type mockService struct {
 	createTask func(ctx context.Context, req task.CreateTaskRequest) (*task.Task, error)
 	getTask    func(ctx context.Context, id string) (*task.Task, error)
-	getAllTasks func(ctx context.Context) ([]*task.Task, error)
+	listTasks  func(ctx context.Context, p task.ListParams) (*task.PagedResult, error)
 	updateTask func(ctx context.Context, id string, req task.UpdateTaskRequest) (*task.Task, error)
 	deleteTask func(ctx context.Context, id string) error
 }
@@ -41,11 +41,11 @@ func (m *mockService) GetTask(ctx context.Context, id string) (*task.Task, error
 	}
 	return &task.Task{}, nil
 }
-func (m *mockService) GetAllTasks(ctx context.Context) ([]*task.Task, error) {
-	if m.getAllTasks != nil {
-		return m.getAllTasks(ctx)
+func (m *mockService) ListTasks(ctx context.Context, p task.ListParams) (*task.PagedResult, error) {
+	if m.listTasks != nil {
+		return m.listTasks(ctx, p)
 	}
-	return []*task.Task{}, nil
+	return &task.PagedResult{Tasks: []*task.Task{}, Total: 0, Limit: p.Limit, Offset: p.Offset}, nil
 }
 func (m *mockService) UpdateTask(ctx context.Context, id string, req task.UpdateTaskRequest) (*task.Task, error) {
 	if m.updateTask != nil {
@@ -258,4 +258,125 @@ func TestErrorResponse_Shape(t *testing.T) {
 	assert.Contains(t, resp, "code")
 	assert.Contains(t, resp, "errors")
 	assert.NotContains(t, resp, "message")
+}
+
+func TestListTasks_NoFilters(t *testing.T) {
+	r := newRouter(&mockService{})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/tasks", nil))
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp task.PagedResult
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, 20, resp.Limit)
+	assert.Equal(t, 0, resp.Offset)
+	assert.Equal(t, 0, resp.Total)
+	assert.NotNil(t, resp.Tasks)
+}
+
+func TestListTasks_InvalidPriority(t *testing.T) {
+	r := newRouter(&mockService{})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/tasks?priority=urgent", nil))
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp task.ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "invalid_request", resp.Code)
+	require.Len(t, resp.Errors, 1)
+	assert.Equal(t, "priority", resp.Errors[0].Field)
+}
+
+func TestListTasks_InvalidCompleted(t *testing.T) {
+	r := newRouter(&mockService{})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/tasks?completed=yes", nil))
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp task.ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "invalid_request", resp.Code)
+	assert.Equal(t, "completed", resp.Errors[0].Field)
+}
+
+func TestListTasks_InvalidLimit(t *testing.T) {
+	tests := []struct{ q string }{
+		{"limit=0"}, {"limit=101"}, {"limit=abc"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.q, func(t *testing.T) {
+			r := newRouter(&mockService{})
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/tasks?"+tt.q, nil))
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			var resp task.ErrorResponse
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			assert.Equal(t, "limit", resp.Errors[0].Field)
+		})
+	}
+}
+
+func TestListTasks_InvalidOffset(t *testing.T) {
+	tests := []struct{ q string }{
+		{"offset=-1"}, {"offset=abc"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.q, func(t *testing.T) {
+			r := newRouter(&mockService{})
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/tasks?"+tt.q, nil))
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			var resp task.ErrorResponse
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			assert.Equal(t, "offset", resp.Errors[0].Field)
+		})
+	}
+}
+
+func TestListTasks_FiltersPassedToService(t *testing.T) {
+	var capturedParams task.ListParams
+	svc := &mockService{
+		listTasks: func(_ context.Context, p task.ListParams) (*task.PagedResult, error) {
+			capturedParams = p
+			return &task.PagedResult{Tasks: []*task.Task{}}, nil
+		},
+	}
+	r := newRouter(svc)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/tasks?priority=high&category=Work&completed=false&limit=5&offset=10", nil))
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, task.PriorityHigh, capturedParams.Filter.Priority)
+	require.NotNil(t, capturedParams.Filter.Category)
+	assert.Equal(t, "work", *capturedParams.Filter.Category)
+	require.NotNil(t, capturedParams.Filter.Completed)
+	assert.False(t, *capturedParams.Filter.Completed)
+	assert.Equal(t, 5, capturedParams.Limit)
+	assert.Equal(t, 10, capturedParams.Offset)
+}
+
+func TestListTasks_PagedResponseShape(t *testing.T) {
+	svc := &mockService{
+		listTasks: func(_ context.Context, p task.ListParams) (*task.PagedResult, error) {
+			return &task.PagedResult{Tasks: []*task.Task{}, Total: 42, Limit: p.Limit, Offset: p.Offset}, nil
+		},
+	}
+	r := newRouter(svc)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/tasks?limit=10&offset=20", nil))
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp, "tasks")
+	assert.Contains(t, resp, "total")
+	assert.Contains(t, resp, "limit")
+	assert.Contains(t, resp, "offset")
+	assert.Equal(t, float64(42), resp["total"])
+	assert.Equal(t, float64(10), resp["limit"])
+	assert.Equal(t, float64(20), resp["offset"])
 }

@@ -143,3 +143,25 @@ type ErrorResponse struct {
 	Code   string       `json:"code"`
 	Errors []FieldError `json:"errors"`
 }
+
+// TaskFilter holds optional filters for listing tasks.
+type TaskFilter struct {
+	Priority  Priority
+	Category  *string
+	Completed *bool
+}
+
+// ListParams bundles filters and pagination for ListTasks.
+type ListParams struct {
+	Filter TaskFilter
+	Limit  int
+	Offset int
+}
+
+// PagedResult wraps a page of tasks with pagination metadata.
+type PagedResult struct {
+	Tasks  []*Task `json:"tasks"`
+	Total  int     `json:"total"`
+	Limit  int     `json:"limit"`
+	Offset int     `json:"offset"`
+}

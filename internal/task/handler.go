@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -45,13 +47,67 @@ func (h *Handler) CreateTask(c *gin.Context) {
 }
 
 func (h *Handler) ListTasks(c *gin.Context) {
-	tasks, err := h.svc.GetAllTasks(c.Request.Context())
+	var f TaskFilter
+
+	if p := c.Query("priority"); p != "" {
+		f.Priority = ParsePriority(p)
+		if !f.Priority.IsValid() {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Code:   "invalid_request",
+				Errors: []FieldError{{Field: "priority", Message: "must be low, medium, or high"}},
+			})
+			return
+		}
+	}
+	if cat := c.Query("category"); cat != "" {
+		lower := strings.ToLower(cat)
+		f.Category = &lower
+	}
+	if comp := c.Query("completed"); comp != "" {
+		b, err := strconv.ParseBool(comp)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Code:   "invalid_request",
+				Errors: []FieldError{{Field: "completed", Message: "must be true or false"}},
+			})
+			return
+		}
+		f.Completed = &b
+	}
+
+	limit := 20
+	if l := c.Query("limit"); l != "" {
+		v, err := strconv.Atoi(l)
+		if err != nil || v < 1 || v > 100 {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Code:   "invalid_request",
+				Errors: []FieldError{{Field: "limit", Message: "must be between 1 and 100"}},
+			})
+			return
+		}
+		limit = v
+	}
+
+	offset := 0
+	if o := c.Query("offset"); o != "" {
+		v, err := strconv.Atoi(o)
+		if err != nil || v < 0 {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Code:   "invalid_request",
+				Errors: []FieldError{{Field: "offset", Message: "must be 0 or greater"}},
+			})
+			return
+		}
+		offset = v
+	}
+
+	result, err := h.svc.ListTasks(c.Request.Context(), ListParams{Filter: f, Limit: limit, Offset: offset})
 	if err != nil {
 		handleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, tasks)
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) GetTask(c *gin.Context) {

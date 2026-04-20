@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +19,7 @@ var ErrNotFound = errors.New("task not found")
 type Repository interface {
 	Create(ctx context.Context, task *Task) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Task, error)
-	GetAll(ctx context.Context) ([]*Task, error)
+	List(ctx context.Context, f TaskFilter, offset, limit int) ([]*Task, int, error)
 	Update(ctx context.Context, task *Task) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -59,17 +60,54 @@ func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Task, error) {
 	return &task, nil
 }
 
-func (r *repository) GetAll(ctx context.Context) ([]*Task, error) {
+func (r *repository) List(ctx context.Context, f TaskFilter, offset, limit int) ([]*Task, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	tasks := make([]*Task, 0)
-	const query = `
-		SELECT id, title, priority, category, completed, created_at, updated_at
-		FROM tasks ORDER BY created_at DESC`
-	if err := r.db.SelectContext(ctx, &tasks, query); err != nil {
-		return nil, fmt.Errorf("listing tasks: %w", err)
+
+	where, args := buildWhere(f)
+
+	var total int
+	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM tasks"+where, args...); err != nil {
+		return nil, 0, fmt.Errorf("counting tasks: %w", err)
 	}
-	return tasks, nil
+
+	tasks := make([]*Task, 0)
+	listQuery := fmt.Sprintf(
+		"SELECT id, title, priority, category, completed, created_at, updated_at FROM tasks%s ORDER BY created_at DESC LIMIT $%d OFFSET $%d",
+		where, len(args)+1, len(args)+2,
+	)
+	if err := r.db.SelectContext(ctx, &tasks, listQuery, append(args, limit, offset)...); err != nil {
+		return nil, 0, fmt.Errorf("listing tasks: %w", err)
+	}
+
+	return tasks, total, nil
+}
+
+func buildWhere(f TaskFilter) (string, []any) {
+	var clauses []string
+	var args []any
+	n := 1
+
+	if f.Priority.IsValid() {
+		clauses = append(clauses, fmt.Sprintf("priority = $%d", n))
+		args = append(args, f.Priority)
+		n++
+	}
+	if f.Category != nil {
+		clauses = append(clauses, fmt.Sprintf("category = $%d", n))
+		args = append(args, *f.Category)
+		n++
+	}
+	if f.Completed != nil {
+		clauses = append(clauses, fmt.Sprintf("completed = $%d", n))
+		args = append(args, *f.Completed)
+		n++
+	}
+
+	if len(clauses) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
 }
 
 func (r *repository) Update(ctx context.Context, task *Task) error {
