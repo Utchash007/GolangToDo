@@ -19,6 +19,18 @@ func (m *mockRepo) Create(_ context.Context, _ *Task) error         { return nil
 func (m *mockRepo) GetAll(_ context.Context) ([]*Task, error)       { return m.tasks, nil }
 func (m *mockRepo) Update(_ context.Context, _ *Task) error         { return nil }
 func (m *mockRepo) Delete(_ context.Context, _ uuid.UUID) error     { return nil }
+func (m *mockRepo) BulkComplete(_ context.Context, ids []uuid.UUID) ([]*Task, error) {
+	tasks := make([]*Task, len(ids))
+	for i := range ids {
+		t := NewTask("t", PriorityLow, "c")
+		t.Completed = true
+		tasks[i] = t
+	}
+	return tasks, nil
+}
+func (m *mockRepo) BulkDelete(_ context.Context, _ []uuid.UUID) error {
+	return nil
+}
 
 func (m *mockRepo) GetByID(_ context.Context, _ uuid.UUID) (*Task, error) {
 	if m.task == nil {
@@ -143,4 +155,63 @@ func TestService_DeleteTask_InvalidUUID(t *testing.T) {
 	err := svc.DeleteTask(context.Background(), "invalid-uuid")
 
 	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestService_BulkComplete(t *testing.T) {
+	svc := &service{repo: &mockRepo{}}
+
+	ids := []string{
+		"550e8400-e29b-41d4-a716-446655440000",
+		"550e8400-e29b-41d4-a716-446655440001",
+	}
+	tasks, err := svc.BulkComplete(context.Background(), ids)
+
+	require.NoError(t, err)
+	assert.Len(t, tasks, 2)
+	for _, task := range tasks {
+		assert.True(t, task.Completed)
+	}
+}
+
+func TestService_BulkComplete_InvalidUUID(t *testing.T) {
+	svc := &service{repo: &mockRepo{}}
+
+	_, err := svc.BulkComplete(context.Background(), []string{"not-a-uuid"})
+
+	var ve *ValidationError
+	require.ErrorAs(t, err, &ve)
+	assert.Contains(t, ve.Error(), "invalid id")
+}
+
+func TestService_BulkDelete(t *testing.T) {
+	svc := &service{repo: &mockRepo{}}
+
+	ids := []string{
+		"550e8400-e29b-41d4-a716-446655440000",
+		"550e8400-e29b-41d4-a716-446655440001",
+	}
+	err := svc.BulkDelete(context.Background(), ids)
+
+	require.NoError(t, err)
+}
+
+func TestService_BulkDelete_InvalidUUID(t *testing.T) {
+	svc := &service{repo: &mockRepo{}}
+
+	err := svc.BulkDelete(context.Background(), []string{"bad-id"})
+
+	var ve *ValidationError
+	require.ErrorAs(t, err, &ve)
+}
+
+func TestService_BulkDelete_Deduplicates(t *testing.T) {
+	svc := &service{repo: &mockRepo{}}
+
+	// same ID twice — should be deduplicated to one call
+	ids := []string{
+		"550e8400-e29b-41d4-a716-446655440000",
+		"550e8400-e29b-41d4-a716-446655440000",
+	}
+	err := svc.BulkDelete(context.Background(), ids)
+	require.NoError(t, err)
 }

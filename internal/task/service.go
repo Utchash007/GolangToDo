@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -15,6 +16,8 @@ type Service interface {
 	GetAllTasks(ctx context.Context) ([]*Task, error)
 	UpdateTask(ctx context.Context, id string, req UpdateTaskRequest) (*Task, error)
 	DeleteTask(ctx context.Context, id string) error
+	BulkComplete(ctx context.Context, ids []string) ([]*Task, error)
+	BulkDelete(ctx context.Context, ids []string) error
 }
 
 type service struct {
@@ -102,4 +105,37 @@ func (s *service) DeleteTask(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return s.repo.Delete(ctx, taskID)
+}
+
+func (s *service) BulkComplete(ctx context.Context, ids []string) ([]*Task, error) {
+	uuids, err := parseAndDeduplicateUUIDs(ids)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.BulkComplete(ctx, uuids)
+}
+
+func (s *service) BulkDelete(ctx context.Context, ids []string) error {
+	uuids, err := parseAndDeduplicateUUIDs(ids)
+	if err != nil {
+		return err
+	}
+	return s.repo.BulkDelete(ctx, uuids)
+}
+
+// parseAndDeduplicateUUIDs parses string IDs into uuid.UUIDs and removes duplicates.
+func parseAndDeduplicateUUIDs(ids []string) ([]uuid.UUID, error) {
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	result := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		parsed, err := uuid.Parse(id)
+		if err != nil {
+			return nil, &ValidationError{Message: fmt.Sprintf("invalid id: %q", id)}
+		}
+		if _, dup := seen[parsed]; !dup {
+			seen[parsed] = struct{}{}
+			result = append(result, parsed)
+		}
+	}
+	return result, nil
 }

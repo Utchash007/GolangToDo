@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,8 @@ type Repository interface {
 	GetAll(ctx context.Context) ([]*Task, error)
 	Update(ctx context.Context, task *Task) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	BulkComplete(ctx context.Context, ids []uuid.UUID) ([]*Task, error)
+	BulkDelete(ctx context.Context, ids []uuid.UUID) error
 }
 
 type repository struct {
@@ -110,6 +113,93 @@ func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	if rows == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *repository) BulkComplete(ctx context.Context, ids []uuid.UUID) ([]*Task, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, now)
+	placeholders := make([]string, len(ids))
+	for i, id := range ids {
+		args = append(args, id)
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+	}
+	query := fmt.Sprintf(`
+		UPDATE tasks SET completed = true, updated_at = $1
+		WHERE id IN (%s)
+		RETURNING id, title, priority, category, completed, created_at, updated_at`,
+		strings.Join(placeholders, ","))
+
+	rows, err := tx.QueryxContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("bulk completing tasks: %w", err)
+	}
+	defer rows.Close()
+
+	tasks := make([]*Task, 0, len(ids))
+	for rows.Next() {
+		var t Task
+		if err := rows.StructScan(&t); err != nil {
+			return nil, fmt.Errorf("scanning task: %w", err)
+		}
+		tasks = append(tasks, &t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating rows: %w", err)
+	}
+	if len(tasks) != len(ids) {
+		return nil, ErrNotFound
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing transaction: %w", err)
+	}
+	return tasks, nil
+}
+
+func (r *repository) BulkDelete(ctx context.Context, ids []uuid.UUID) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	args := make([]any, len(ids))
+	placeholders := make([]string, len(ids))
+	for i, id := range ids {
+		args[i] = id
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	}
+	query := fmt.Sprintf(`DELETE FROM tasks WHERE id IN (%s)`, strings.Join(placeholders, ","))
+
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("bulk deleting tasks: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking rows affected: %w", err)
+	}
+	if n != int64(len(ids)) {
+		return ErrNotFound
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
 	}
 	return nil
 }

@@ -143,3 +143,8 @@ type ErrorResponse struct {
 	Code   string       `json:"code"`
 	Errors []FieldError `json:"errors"`
 }
+
+// BulkRequest carries a list of task IDs for bulk operations (max 100).
+type BulkRequest struct {
+	IDs []string `json:"ids" binding:"required,min=1,max=100"`
+}
