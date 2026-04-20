@@ -61,22 +61,23 @@ func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Task, error) {
 }
 
 func (r *repository) List(ctx context.Context, f TaskFilter, offset, limit int) ([]*Task, int, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-
 	where, args := buildWhere(f)
 
+	countCtx, countCancel := context.WithTimeout(ctx, dbTimeout)
+	defer countCancel()
 	var total int
-	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM tasks"+where, args...); err != nil {
+	if err := r.db.GetContext(countCtx, &total, "SELECT COUNT(*) FROM tasks"+where, args...); err != nil {
 		return nil, 0, fmt.Errorf("counting tasks: %w", err)
 	}
 
+	listCtx, listCancel := context.WithTimeout(ctx, dbTimeout)
+	defer listCancel()
 	tasks := make([]*Task, 0)
 	listQuery := fmt.Sprintf(
 		"SELECT id, title, priority, category, completed, created_at, updated_at FROM tasks%s ORDER BY created_at DESC LIMIT $%d OFFSET $%d",
 		where, len(args)+1, len(args)+2,
 	)
-	if err := r.db.SelectContext(ctx, &tasks, listQuery, append(args, limit, offset)...); err != nil {
+	if err := r.db.SelectContext(listCtx, &tasks, listQuery, append(args, limit, offset)...); err != nil {
 		return nil, 0, fmt.Errorf("listing tasks: %w", err)
 	}
 
